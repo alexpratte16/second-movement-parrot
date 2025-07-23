@@ -31,6 +31,7 @@
 #include "filesystem.h"
 #include "watch.h"
 #include "delay.h"
+#include "../parrot/parrot_cmds.h"
 
 static int help_cmd(int argc, char *argv[]);
 static int flash_cmd(int argc, char *argv[]);
@@ -114,6 +115,29 @@ shell_command_t g_shell_commands[] = {
         .max_args = 2,
         .cb = stress_cmd,
     },
+    #if ENABLE_PARROT_CMDS
+    {
+        .name = "parrot_on",
+        .help = "turn on note; usage: parrot_on FREQ",
+        .min_args = 1,
+        .max_args = 1,
+        .cb = parrot_on_cmd,
+    },
+    {
+        .name = "parrot_off",
+        .help = "turn off note; usage: parrot_off FREQ",
+        .min_args = 1,
+        .max_args = 1,
+        .cb = parrot_off_cmd,
+    },
+    {
+        .name = "parrot_state",
+        .help = "get osc states; usage: parrot_state",
+        .min_args = 0,
+        .max_args = 0,
+        .cb = parrot_state_cmd,
+    },
+    #endif // ENABLE_PARROT_CMDS
 };
 
 const size_t g_num_shell_commands = sizeof(g_shell_commands) / sizeof(shell_command_t);

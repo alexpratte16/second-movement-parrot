@@ -104,6 +104,10 @@ SRCS += \
   ./watch-library/shared/watch/watch_common_buzzer.c \
   ./watch-library/shared/watch/watch_common_display.c \
   ./watch-library/shared/watch/watch_utility.c \
+  ./parrot/poly_control.c \
+  ./parrot/poly_data.c \
+  ./parrot/oscillators.c \
+  ./parrot/parrot_cmds.c \
 
 
 SRCS += ./watch-library/shared/driver/lis2dw.c
