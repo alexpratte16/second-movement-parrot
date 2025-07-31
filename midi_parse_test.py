@@ -28,9 +28,6 @@ MIDI_EVT_PROG_CHNG_LEN = 2
 MIDI_EVT_CHANNEL_PRESSURE_LEN = 2
 MIDI_EVT_PITCH_BEND_LEN = 3
 
-
-multi_packet_message = False
-
 @dataclass
 class MidiHeader:
     format: int
@@ -79,8 +76,8 @@ def note_on(file_contents: bytes, idx: int) -> int:
     channel = file_contents[idx] & 0xF
     note = file_contents[idx+1]
     velocity = file_contents[idx+2]
-
-    print(f"Note on: {channel}, {note}, {velocity}")
+    
+    print(f"Note on: {hex(channel)}, {hex(note)}, {hex(velocity)}")
     if note < len(notes):
         notes[note][0] += 1
     return 0
@@ -90,7 +87,7 @@ def note_off(file_contents: bytes, idx: int) -> int:
     note = file_contents[idx+1]
     velocity = file_contents[idx+2]
 
-    print(f"Note off: {channel}, {note}, {velocity}")
+    print(f"Note off: {hex(channel)}, {hex(note)}, {hex(velocity)}")
     if note < len(notes):
         notes[note][1] -= 1
     return 0
@@ -152,8 +149,10 @@ def step_track(file_contents: bytes, idx) -> int:
             ret = idx + meta_len
             # End of track event has 0 len
             if meta_len > 0:
-                ret += skip_delta_time(file_contents, ret)
-
+                try:
+                    ret = skip_delta_time(file_contents, ret)
+                except:
+                    pass
             return ret
 
     # MIDI event
@@ -209,10 +208,10 @@ if __name__ == "__main__":
     
         if header.format == 1:
             track_indices = []
-            track_locations = track_locations[1:8]
+            track_locations = track_locations[1:]
             for track in track_locations:
-                track_indices.append(track.idx)
-            
+                track_indices.append(skip_delta_time(file_contents, track.idx))
+
             finished = False
 
             while not finished:
@@ -224,5 +223,6 @@ if __name__ == "__main__":
                     else:
                         finished = finished and True
 
-        for idx, count in enumerate(notes):
-            print(idx, count)
+        for idx, counts in enumerate(notes):
+            if counts != [0,0]:
+                print(idx, counts, sum(counts))
