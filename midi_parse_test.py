@@ -149,10 +149,7 @@ def step_track(file_contents: bytes, idx) -> int:
             ret = idx + meta_len
             # End of track event has 3 len
             if meta_len > 3:
-                try:
-                    ret = skip_delta_time(file_contents, ret)
-                except Exception as e:
-                    print("EXCEPTION:",e)
+                ret = skip_delta_time(file_contents, ret)
             return ret
 
     # MIDI event
