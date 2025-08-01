@@ -49,7 +49,6 @@ notes = []
 for i in range(128):
     notes.append([0,0].copy())
 
-
 def skip_meta(file_contents: bytes, idx: int) -> int:
     len = file_contents[idx+2] + 3
     print("META", [hex(b) for b in file_contents[idx:idx+len]])
@@ -73,6 +72,7 @@ def skip_delta_time(file_contents: bytes, idx: int):
     return idx+1
 
 def skip(event_byte: bytes, file_contents: bytes, idx: int) -> int:
+    print("midi_event", hex(event_byte))
     return 0
 
 def note_on(event_byte: bytes, file_contents: bytes, idx: int) -> int:
@@ -114,7 +114,7 @@ MIDI_EVENTS = [
     Event(MIDI_EVT_CONTROLLER, MIDI_EVT_CONTROLLER_LEN, skip),
     Event(MIDI_EVT_PROG_CHNG, MIDI_EVT_PROG_CHNG_LEN, skip),
     Event(MIDI_EVT_CHANNEL_PRESSURE, MIDI_EVT_PITCH_BEND_LEN, skip),
-    Event(MIDI_EVT_PITCH_BEND_LEN, MIDI_EVT_PITCH_BEND_LEN, skip),
+    Event(MIDI_EVT_PITCH_BEND, MIDI_EVT_PITCH_BEND_LEN, skip),
 ]
 
 def get_chunk_data_idx(file_contents: bytes, chunk_header: bytes) -> tuple[int,int]:
@@ -148,9 +148,9 @@ last_event = 0
 def parse_midi_event(event_byte, file_contents, idx):
     for midi_event_idx in range(len(MIDI_EVENTS)):
         if (event_byte >> 4) ==  MIDI_EVENTS[midi_event_idx].evt:
+            print("MIDI event", hex(idx), hex(event_byte), hex(midi_event_idx))
             extra_bytes = MIDI_EVENTS[midi_event_idx].callback(event_byte, file_contents, idx+1)
             new_idx =  idx+MIDI_EVENTS[midi_event_idx].len+extra_bytes
-            print("MIDI event", hex(idx), hex(event_byte))
             return skip_delta_time(file_contents, new_idx)
     return None
 
