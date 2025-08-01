@@ -28,6 +28,8 @@ MIDI_EVT_PROG_CHNG_LEN = 2
 MIDI_EVT_CHANNEL_PRESSURE_LEN = 2
 MIDI_EVT_PITCH_BEND_LEN = 3
 
+SUPPORT_RUNNING_STATUS = True
+
 @dataclass
 class MidiHeader:
     format: int
@@ -47,8 +49,6 @@ notes = []
 for i in range(128):
     notes.append([0,0].copy())
 
-def skip(file_contents: bytes, idx: int) -> int:
-    return 0
 
 def skip_meta(file_contents: bytes, idx: int) -> int:
     len = file_contents[idx+2] + 3
@@ -72,20 +72,29 @@ def skip_delta_time(file_contents: bytes, idx: int):
     print("Delta Time", hex(start_idx),  hex(dt))
     return idx+1
 
-def note_on(file_contents: bytes, idx: int) -> int:
-    channel = file_contents[idx] & 0xF
-    note = file_contents[idx+1]
-    velocity = file_contents[idx+2]
-    
-    print(f"Note on: {hex(channel)}, {hex(note)}, {hex(velocity)}")
-    if note < len(notes):
-        notes[note][0] += 1
+def skip(event_byte: bytes, file_contents: bytes, idx: int) -> int:
     return 0
 
-def note_off(file_contents: bytes, idx: int) -> int:
-    channel = file_contents[idx] & 0xF
-    note = file_contents[idx+1]
-    velocity = file_contents[idx+2]
+def note_on(event_byte: bytes, file_contents: bytes, idx: int) -> int:
+    channel = event_byte & 0xF
+    note = file_contents[idx]
+    velocity = file_contents[idx+1]
+
+    # Stupid midi standard making 0 velocity note off?
+    if velocity > 0:
+        print(f"Note on: {hex(channel)}, {hex(note)}, {hex(velocity)}")
+        if note < len(notes):
+            notes[note][0] += 1
+    else:
+        print(f"Note off: {hex(channel)}, {hex(note)}, {hex(velocity)}")
+        if note < len(notes):
+            notes[note][1] -= 1
+    return 0
+
+def note_off(event_byte: bytes, file_contents: bytes, idx: int) -> int:
+    channel = event_byte & 0xF
+    note = file_contents[idx]
+    velocity = file_contents[idx+1]
 
     print(f"Note off: {hex(channel)}, {hex(note)}, {hex(velocity)}")
     if note < len(notes):
@@ -134,34 +143,50 @@ def get_midi_track_indices(file_contents: bytes) -> list[MidiTrackMetadata]:
 
     return ret[1:]
 
-def step_track(file_contents: bytes, idx) -> int:
+last_event = 0
+
+def parse_midi_event(event_byte, file_contents, idx):
+    for midi_event_idx in range(len(MIDI_EVENTS)):
+        if (event_byte >> 4) ==  MIDI_EVENTS[midi_event_idx].evt:
+            extra_bytes = MIDI_EVENTS[midi_event_idx].callback(event_byte, file_contents, idx+1)
+            new_idx =  idx+MIDI_EVENTS[midi_event_idx].len+extra_bytes
+            print("MIDI event", hex(idx), hex(event_byte))
+            return skip_delta_time(file_contents, new_idx)
+    return None
+
+def step_track(file_contents: bytes, idx, last_event) -> tuple[int, int]:
 
     event_byte = file_contents[idx]
 
     match event_byte:
-
         case 0xF0:
             new_idx = idx+skip_sysex(file_contents, idx)
-            return skip_delta_time(file_contents, new_idx)
+            last_event = 0
+            return skip_delta_time(file_contents, new_idx), last_event
 
         case 0xFF:
             meta_len = skip_meta(file_contents, idx)
+            last_event = 0
             ret = idx + meta_len
             # End of track event has 3 len
             if meta_len > 3:
                 ret = skip_delta_time(file_contents, ret)
-            return ret
-
+            return ret, last_event
+    
     # MIDI event
-    for midi_event_idx in range(len(MIDI_EVENTS)):
-        if (event_byte >> 4) ==  MIDI_EVENTS[midi_event_idx].evt:
-            extra_bytes = MIDI_EVENTS[midi_event_idx].callback(file_contents, idx)
-            new_idx =  idx+MIDI_EVENTS[midi_event_idx].len+extra_bytes
-            print("MIDI event", hex(idx), hex(event_byte))
-            return skip_delta_time(file_contents, new_idx)
+    ret = parse_midi_event(event_byte, file_contents, idx)
+    if ret is not None:
+        print(f"setting last event: {event_byte}")
+        last_event = event_byte
+        return ret, last_event
 
-    print(f"skip: {hex(idx)}, {hex(file_contents[idx])}")
-    return idx + 1
+    if SUPPORT_RUNNING_STATUS and last_event != 0:
+        ret = parse_midi_event(last_event, file_contents, idx-1)
+        if ret is not None:
+            return ret, last_event
+
+    print(f"skip: {hex(idx)}, {hex(file_contents[idx])}, last_event: {hex(last_event)}")
+    return idx + 1, last_event
 
 
 def parse_midi_header(file_contents: bytes) -> MidiHeader:
@@ -185,7 +210,8 @@ def parse_midi_header(file_contents: bytes) -> MidiHeader:
 if __name__ == "__main__":
 
 
-    MIDI_FILE_PATH = r"C:\Users\Alex\Downloads\pwrply.mid"
+    #MIDI_FILE_PATH = r"C:\Users\Alex\Downloads\pwrply.mid"
+    MIDI_FILE_PATH = r"C:\Users\Alex\Downloads\Blink_182_-_What's_My_Age_Again.mid"
 
     with open(MIDI_FILE_PATH, "rb") as f:
         file_contents = f.read()
@@ -205,9 +231,11 @@ if __name__ == "__main__":
     
         if header.format == 1:
             track_indices = []
+            last_events = []
             track_locations = track_locations[1:]
             for track in track_locations:
                 track_indices.append(skip_delta_time(file_contents, track.idx))
+                last_events.append(0)
 
             finished = False
 
@@ -215,7 +243,7 @@ if __name__ == "__main__":
                 finished = True
                 for track_num in range(len(track_locations)):
                     if track_indices[track_num] < track_locations[track_num].end():
-                        track_indices[track_num] = step_track(file_contents, track_indices[track_num])
+                        track_indices[track_num], last_events[track_num] = step_track(file_contents, track_indices[track_num], last_events[track_num])
                         finished = finished and False
                     else:
                         finished = finished and True
